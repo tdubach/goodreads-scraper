@@ -3,6 +3,7 @@ from os import path
 import argparse
 from datetime import datetime
 import json
+from time import sleep
 
 from urllib.request import urlopen
 from urllib.error import HTTPError
@@ -13,13 +14,16 @@ import pandas as pd
 import regex as re
 from goodreads_scraper.get_reviews import RATING_STARS_DICT
 
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+
 
 def scrape_books_from_user(id, max_page=None, shelf='read'):
     page = 1
-    url_read = 'https://www.goodreads.com/review/list/' + \
+    url = 'https://www.goodreads.com/review/list/' + \
         str(id) + '?page=' + str(page) + '&print=true&shelf=' + shelf
 
-    source = urlopen(url_read)
+    source = urlopen(url)
     soup = bs4.BeautifulSoup(source, 'html.parser')
 
     time.sleep(2)
@@ -35,12 +39,12 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
 
     data = []
     for page in range(last_page):
-        url = 'https://www.goodreads.com/review/list/' + \
-            str(id) + '?page=' + str(page+1) + '&print=true&shelf=read'
-        source = urlopen(url)
-        soup = bs4.BeautifulSoup(source, 'html.parser')
-
-        time.sleep(2)
+        if page != 0:
+            url = 'https://www.goodreads.com/review/list/' + \
+                str(id) + '?page=' + str(page+1) + '&print=true&shelf=read'
+            source = urlopen(url)
+            soup = bs4.BeautifulSoup(source, 'html.parser')
+            time.sleep(2)
 
         table = soup.find('table', id='books')
         table_body = table.find('tbody')
@@ -85,6 +89,38 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
                         'date_started': date_started, 'date_read': date_read, 'date_added': date_added})
 
     return data
+
+def scrape_users_from_book(id, driver):
+    book_url = 'https://www.goodreads.com/book/show/' + str(id) + '/reviews'
+    driver.get(book_url)
+    sleep(5)
+
+    user_ids = {}
+    buttons = driver.find_elements(By.CLASS_NAME, 'ShelvingSocialSignalCard')
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+    sleep(2)
+    for button in buttons:
+        stars = button.get_attribute('aria-label')
+        stars = int(re.search('\d-star', stars).group()[0])
+        button.click()
+        sleep(2)
+        counter = 0
+        while more := driver.find_elements(By.XPATH, '//button/span/span[text()="Show more ratings"]'):
+            more[0].click()
+            sleep(2)
+            if counter > 50: break
+            else: counter += 1
+        overlay = driver.find_element(By.CLASS_NAME, 'Overlay__window')
+        reviewers = overlay.find_elements(By.CLASS_NAME, 'ReviewerProfile__name')
+        user_id = [re.search('/\d+',reviewer.find_element(By.TAG_NAME, 'a').get_attribute('href')).group()[1:-1] for reviewer in reviewers]
+        for user in user_id:
+            if user not in user_ids:
+                user_ids[user] = stars
+        close_button = driver.find_element(By.XPATH, '//button[@aria-label="Close"]')
+        close_button.click()
+        sleep(2)
+
+    return user_ids
 
 def condense_users(users_directory_path):
 
