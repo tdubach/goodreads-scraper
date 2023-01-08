@@ -12,7 +12,13 @@ import time
 import pandas as pd
 
 import regex as re
-from goodreads_scraper.get_reviews import RATING_STARS_DICT
+
+RATING_STARS_DICT = {'it was amazing': 5,
+                     'really liked it': 4,
+                     'liked it': 3,
+                     'it was ok': 2,
+                     'did not like it': 1,
+                     '': None}
 
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
@@ -50,6 +56,8 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
             time.sleep(2)
 
         table = soup.find('table', id='books')
+        if not table:
+            break
         table_body = table.find('tbody')
 
         rows = table_body.find_all('tr')
@@ -68,12 +76,15 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
                 rating = None
 
             review_elem = row.find('td', attrs={'class': 'field review'}).find_all(
-                'span')[-1]
+                'span')[0]
             review = review_elem.text
             if review == 'None':
                 review_id = None
             else:
-              review_id = re.search('\d+', review_elem['id']).group()
+                try:
+                    review_id = re.search('\d+', review_elem['id']).group()
+                except KeyError as e:
+                    print(e)
             
             date_started = row.find(
                 'td', attrs={'class': 'field date_started'})
@@ -95,24 +106,27 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
 
 def scrape_users_from_book(id, driver: WebDriver):
     book_url = 'https://www.goodreads.com/book/show/' + str(id) + '/reviews'
-    driver.implicitly_wait(15)
     driver.get(book_url)
-    sleep(2)
+    sleep(10)
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+    sleep(3)
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
 
     user_ids = {}
     WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.CLASS_NAME, 'ShelvingSocialSignalCard')))
     buttons = driver.find_elements(By.CLASS_NAME, 'ShelvingSocialSignalCard')
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+    
     sleep(5)
     for button in buttons:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
-        sleep(1)
+        sleep(3)
         button = WebDriverWait(driver, 30).until(EC.element_to_be_clickable(button))
         stars = button.get_attribute('aria-label')
         stars = int(re.search('\d-star', stars).group()[0])
         try:
             button.click()
         except Exception:
+            print('ShelvingSocialSignalCard click failed a first time')
             sleep(2)
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
             sleep(5)
@@ -129,6 +143,7 @@ def scrape_users_from_book(id, driver: WebDriver):
                 try:
                     more_button.click()
                 except Exception:
+                    print('more button click failed a first time')
                     sleep(5)
                     more_button.click()
 
