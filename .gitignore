@@ -1,2 +1,5 @@
 data/
-__pycache__/
+**/__pycache__/
+venv/
+*.log
+user_ids_to_scrape.txt

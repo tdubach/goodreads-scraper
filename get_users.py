@@ -1,6 +1,7 @@
 import os
 from os import path
 import argparse
+import sys
 from datetime import datetime
 import json
 from time import sleep
@@ -32,7 +33,24 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
     url = 'https://www.goodreads.com/review/list/' + \
         str(id) + '?page=' + str(page) + '&print=true&shelf=' + shelf
 
-    source = urlopen(url)
+
+    while True:
+        try:
+            source = urlopen(url)
+        except urllib.error.HTTPError as e:
+            if e.code == 500:
+                # Calculate the waiting time using an exponential backoff strategy
+                wait_time = (2 ** retry_count) * 5
+                if wait_time > 600:
+                    raise
+                print(f"Server error. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                retry_count += 1
+                continue
+            else:
+                raise
+        break
+        
     soup = bs4.BeautifulSoup(source, 'html.parser')
 
     time.sleep(2)
@@ -51,7 +69,24 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
         if page != 0:
             url = 'https://www.goodreads.com/review/list/' + \
                 str(id) + '?page=' + str(page+1) + '&print=true&shelf=read'
-            source = urlopen(url)
+            
+            while True:
+                try:
+                    source = urlopen(url)
+                except urllib.error.HTTPError as e:
+                    if e.code == 500:
+                        # Calculate the waiting time using an exponential backoff strategy
+                        wait_time = (2 ** retry_count) * 5
+                        if wait_time > 600:
+                            raise
+                        print(f"Server error. Retrying in {wait_time} seconds...")
+                        time.sleep(wait_time)
+                        retry_count += 1
+                        continue
+                    else:
+                        raise
+                break
+
             soup = bs4.BeautifulSoup(source, 'html.parser')
             time.sleep(2)
 
@@ -75,8 +110,11 @@ def scrape_books_from_user(id, max_page=None, shelf='read'):
             else:
                 rating = None
 
-            review_elem = row.find('td', attrs={'class': 'field review'}).find_all(
+            try:
+                review_elem = row.find('td', attrs={'class': 'field review'}).find_all(
                 'span')[0]
+            except IndexError as e:
+                review_id = None
             review = review_elem.text
             if review == 'None':
                 review_id = None
@@ -231,4 +269,5 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main()
+    args = sys.argv[1:]
+    main(args)
